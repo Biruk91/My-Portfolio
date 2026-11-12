@@ -21,32 +21,102 @@ export default function Contact() {
     setFeedbackMessage('');
 
     try {
-      const response = await fetch('/api/contact', {
+      // Tier 1: Try server-side Gmail SMTP route first
+      let sentViaServer = false;
+      try {
+        const response = await fetch('/api/contact', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        });
+
+        const rawText = await response.text();
+        let apiData: any = {};
+        try {
+          apiData = JSON.parse(rawText);
+        } catch {
+          apiData = {};
+        }
+
+        if (response.ok && apiData.success && apiData.smtpConfigured) {
+          sentViaServer = true;
+          setStatus('success');
+          setFormData({ name: '', email: '', subject: '', message: '' });
+          return;
+        }
+      } catch (serverErr) {
+        console.warn('Server SMTP unavailable, using direct client submission:', serverErr);
+      }
+
+      // Tier 2: Direct browser client submission to FormSubmit
+      // (Direct browser requests pass Cloudflare bot detection cleanly)
+      const clientResponse = await fetch('https://formsubmit.co/ajax/biruk.ayele.birhanu@gmail.com', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          _subject: formData.subject || `New Portfolio Message from ${formData.name}`,
+          message: formData.message,
+          _template: 'table',
+          _captcha: 'false',
+        }),
       });
 
-      const data = await response.json();
+      const resText = await clientResponse.text();
+      let resData: any = {};
+      try {
+        resData = JSON.parse(resText);
+      } catch {
+        resData = { message: resText };
+      }
 
-      if (response.ok && data.success) {
+      const isSuccess =
+        resData.success === true ||
+        resData.success === 'true' ||
+        (typeof resData.message === 'string' && resData.message.toLowerCase().includes('success'));
+
+      const isActivation =
+        resData.success === 'false' ||
+        resData.success === false ||
+        (typeof resData.message === 'string' &&
+          (resData.message.toLowerCase().includes('activate') ||
+            resData.message.toLowerCase().includes('confirm') ||
+            resData.message.toLowerCase().includes('web server')));
+
+      if (isSuccess) {
         setStatus('success');
         setFormData({ name: '', email: '', subject: '', message: '' });
-      } else if (data.needsActivation) {
+      } else if (isActivation) {
         setStatus('activation');
-        setFeedbackMessage(data.error);
+        setFeedbackMessage(
+          'FormSubmit sent a one-time activation email to biruk.ayele.birhanu@gmail.com. Please open your Gmail and click "Activate Form" once to complete setup.'
+        );
       } else {
         setStatus('error');
-        setFeedbackMessage(data.error || 'Failed to send message. Please try again.');
+        setFeedbackMessage(
+          typeof resData.message === 'string' && resData.message.length < 150
+            ? resData.message
+            : 'Unable to deliver message right now. Please use the direct email link below.'
+        );
       }
     } catch (err: any) {
       console.error('Contact submission error:', err);
       setStatus('error');
-      setFeedbackMessage('Could not reach the email service. Please reach out directly to ' + personalInfo.email);
+      setFeedbackMessage('Network connection error. Please use the direct email link below.');
     }
   };
+
+  const mailtoHref = `mailto:${personalInfo.email}?subject=${encodeURIComponent(
+    formData.subject || 'Portfolio Inquiry'
+  )}&body=${encodeURIComponent(
+    `Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`
+  )}`;
 
   return (
     <section
@@ -103,11 +173,18 @@ export default function Contact() {
                   <div>
                     <p className="font-semibold text-rose-900">Unable to Send</p>
                     <p className="text-xs text-rose-700 mt-0.5">{feedbackMessage}</p>
+                    <a
+                      href={mailtoHref}
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078ff] hover:underline"
+                    >
+                      Click here to send directly via your email client &rarr;
+                    </a>
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} name="contact" data-netlify="true" className="space-y-4">
+                <input type="hidden" name="form-name" value="contact" />
                 <div>
                   <input
                     type="text"

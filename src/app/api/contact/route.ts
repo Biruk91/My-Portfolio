@@ -47,56 +47,23 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
+        smtpConfigured: true,
         message: 'Message delivered directly to Gmail inbox.',
       });
     }
 
-    // Method 2: Fallback to FormSubmit AJAX API with origin headers
-    const origin =
-      request.headers.get('origin') ||
-      request.headers.get('referer') ||
-      'https://biruk-portfolio.vercel.app';
-
-    const response = await fetch('https://formsubmit.co/ajax/biruk.ayele.birhanu@gmail.com', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Origin: origin,
-        Referer: origin,
-      },
-      body: JSON.stringify({
-        name,
-        email,
-        _subject: subject || `Portfolio Inquiry from ${name}`,
-        message,
-        _template: 'table',
-      }),
-    });
-
-    const data = await response.json();
-
-    // FormSubmit returns HTTP 200 even when success is 'false' (e.g., activation needed)
-    if (data.success === 'false' || data.success === false) {
-      return NextResponse.json(
-        {
-          error:
-            data.message ||
-            'Form activation required. Please check your Gmail (biruk.ayele.birhanu@gmail.com) for the one-time FormSubmit activation link.',
-          needsActivation: true,
-        },
-        { status: 403 }
-      );
-    }
-
+    // If EMAIL_USER/EMAIL_PASS are not configured on Netlify environment,
+    // tell client to submit directly from browser (which avoids Cloudflare datacenter IP blocks).
     return NextResponse.json({
-      success: true,
-      message: 'Message sent successfully.',
+      success: false,
+      smtpConfigured: false,
+      message: 'Server SMTP not configured. Falling back to browser client delivery.',
     });
   } catch (error: any) {
     console.error('Contact form submission error:', error);
     return NextResponse.json(
       {
+        success: false,
         error:
           error?.message ||
           'Failed to send message. Please check your email configuration.',
