@@ -183,8 +183,7 @@ export default function Contact() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} name="contact" data-netlify="true" className="space-y-4">
-                <input type="hidden" name="form-name" value="contact" />
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <input
                     type="text"
